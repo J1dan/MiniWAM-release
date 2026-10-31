@@ -1,0 +1,332 @@
+diff --git a/scripts/eval_policy.sh b/scripts/eval_policy.sh
+index cd86337..9267131 100755
+--- a/scripts/eval_policy.sh
++++ b/scripts/eval_policy.sh
+@@ -37,5 +37,10 @@ if [[ -n "${ROBOTWIN_EVAL_ARGS_FILE:-}" ]]; then
+     mapfile -t ROBOTWIN_EVAL_ARGS < "${ROBOTWIN_EVAL_ARGS_FILE}"
+ fi
+
++python_bin="python"
++if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
++    python_bin="${CONDA_PREFIX}/bin/python"
++fi
++
+ PYTHONWARNINGS=ignore::UserWarning \
+-exec python "${ROBOTWIN_ROOT}/scripts/eval_policy_xpolicylab.py" "$@" "${ROBOTWIN_EVAL_ARGS[@]}"
++exec "${python_bin}" "${ROBOTWIN_ROOT}/scripts/eval_policy_xpolicylab.py" "$@" "${ROBOTWIN_EVAL_ARGS[@]}"
+diff --git a/scripts/eval_policy_multitask.py b/scripts/eval_policy_multitask.py
+index 7ad99b8..2a09ba3 100644
+--- a/scripts/eval_policy_multitask.py
++++ b/scripts/eval_policy_multitask.py
+@@ -229,10 +229,16 @@ def parse_args() -> argparse.Namespace:
+     parser.add_argument("--bench-name", default="RoboTwin")
+     parser.add_argument("--action-type", default="joint")
+     parser.add_argument("--seed", type=int, default=0)
++    parser.add_argument(
++        "--gpu-ids",
++        help="Override gpu_ids from the scheduler config, e.g. 0,1 or 0-3.",
++    )
+     parser.add_argument(
+         "--jobs-per-gpu",
+-        type=int,
+-        help="Override jobs_per_gpu from the scheduler config.",
++        help=(
++            "Override jobs_per_gpu from the scheduler config: one value for all GPUs, "
++            "or one per GPU (e.g. 2,4)."
++        ),
+     )
+     parser.add_argument("--task-config", default="demo_clean")
+     parser.add_argument("--test-num", type=int, default=100)
+@@ -312,12 +318,13 @@ def load_config(config_path: Path) -> dict[str, Any]:
+             "enable_remote",
+             "policy_server_ip",
+             "policy_server_port",
++            "miniwam",
+         }
+     )
+     if unknown:
+         raise ConfigError(
+             "The scheduler config only accepts gpu_ids, jobs_per_gpu, num_workers, tasks, "
+-            "enable_remote, policy_server_ip, and policy_server_port; unsupported fields: "
++            "enable_remote, policy_server_ip, policy_server_port, and miniwam; unsupported fields: "
+             + ", ".join(unknown)
+         )
+     data["_config_path"] = str(path)
+@@ -534,21 +541,31 @@ def parse_gpu_ids(raw_gpus: Any) -> list[int]:
+ 
+ 
+ def parse_gpu_capacity(config: Mapping[str, Any], cli: argparse.Namespace) -> dict[str, int]:
+-    gpu_ids = parse_gpu_ids(config.get("gpu_ids"))
++    gpu_ids = parse_gpu_ids(cli.gpu_ids if cli.gpu_ids is not None else config.get("gpu_ids"))
+     jobs_per_gpu = (
+         cli.jobs_per_gpu
+         if cli.jobs_per_gpu is not None
+         else config.get("jobs_per_gpu", 1)
+     )
+-    if isinstance(jobs_per_gpu, bool) or not isinstance(jobs_per_gpu, int):
+-        raise ConfigError("jobs_per_gpu must be an integer.")
+-    if jobs_per_gpu <= 0:
++    # One value for all GPUs, or one per GPU as a list or a string such as "2,4".
++    if isinstance(jobs_per_gpu, str):
++        try:
++            jobs_per_gpu = [int(value) for value in jobs_per_gpu.split(",")]
++        except ValueError:
++            raise ConfigError("jobs_per_gpu must be an integer or one integer per GPU.") from None
++    counts = jobs_per_gpu if isinstance(jobs_per_gpu, list) else [jobs_per_gpu]
++    if any(isinstance(count, bool) or not isinstance(count, int) for count in counts):
++        raise ConfigError("jobs_per_gpu must be an integer or one integer per GPU.")
++    if len(counts) == 1:
++        counts = counts * len(gpu_ids)
++    if len(counts) != len(gpu_ids):
++        raise ConfigError("jobs_per_gpu needs one value, or one per GPU in gpu_ids.")
++    if min(counts) <= 0:
+         raise ConfigError("jobs_per_gpu must be greater than zero.")
+ 
+     capacity: dict[str, int] = {}
+-    for gpu_id in gpu_ids:
+-        gpu_key = str(gpu_id)
+-        capacity[gpu_key] = jobs_per_gpu
++    for gpu_id, count in zip(gpu_ids, counts):
++        capacity[str(gpu_id)] = count
+     return capacity
+ 
+ 
+@@ -977,6 +994,71 @@ def run_schedule(
+     (run_dir / "logs").mkdir(parents=True, exist_ok=False)
+     (run_dir / "jobs").mkdir()
+ 
++    # Optional MiniWAM sidecar only observes plans, logs and protocol evidence. It does not
++    # participate in environment setup, inference, actions, or success checks.
++    miniwam_root = Path(os.environ.get("MINIWAM_ROOT", ROBOTWIN_ROOT.parent)).resolve()
++    protocol_config = None
++    if jobs[0].policy_name == "MiniWAM":
++        sys.path.insert(0, str(miniwam_root))
++        from scripts.eval.robotwin_protocol import PROTOCOL_ENVIRONMENT, resolve_protocol_config, validate_evaluation_jobs
++        try:
++            protocol_config, protocol_environment = resolve_protocol_config(
++                settings.get("miniwam"), miniwam_root
++            )
++            protocol_config["benchmark_validation"] = validate_evaluation_jobs(
++                jobs, protocol_config, ROBOTWIN_ROOT
++            )
++        except (ValueError, OSError) as exc:
++            raise ConfigError(str(exc)) from exc
++        if protocol_config["evaluation_protocol"] == "official" and any(
++            job.overrides.get("expert_check") is not True for job in jobs
++        ):
++            raise ConfigError("Official MiniWAM evaluation requires --expert-check.")
++        for name in PROTOCOL_ENVIRONMENT:
++            os.environ.pop(name, None)
++        os.environ.update(protocol_environment)
++    progress_script = Path(os.environ.get(
++        "MINIWAM_ROBOTWIN_PROGRESS_REPORTER",
++        miniwam_root / "scripts/eval/watch_robotwin_schedule.py",
++    )).expanduser().resolve()
++    progress_reporter = None
++    if progress_script.is_file() or protocol_config is not None:
++        plan = {
++            "schema_version": 1,
++            "created_at_epoch": time.time(),
++            "checkpoint_request": jobs[0].ckpt_name,
++            "gpu_capacity": dict(capacity),
++            "parallel_workers": sum(capacity.values()),
++            "conditions": sorted({str(job.overrides.get("task_config", "demo_clean")) for job in jobs}),
++            "case_output": os.environ.get("MINIWAM_CASE_OUTPUT"),
++            "robotwin_commit": subprocess.check_output(
++                ["git", "-C", str(ROBOTWIN_ROOT), "rev-parse", "HEAD"], text=True
++            ).strip(),
++            "xpolicylab_commit": subprocess.check_output(
++                ["git", "-C", str(ROBOTWIN_ROOT / "XPolicyLab"), "rev-parse", "HEAD"], text=True
++            ).strip(),
++            "miniwam": protocol_config,
++            "result_namespace": (
++                f"{protocol_config['result_namespace']}-seed{jobs[0].seed}" if protocol_config and
++                protocol_config["evaluation_protocol"] == "official" else
++                protocol_config.get("result_namespace") if protocol_config else None
++            ),
++            "jobs": [
++                {"job_id": job.job_id, "task": job.task_name, "seed": job.seed,
++                 "overrides": job.overrides}
++                for job in jobs
++            ],
++        }
++        (run_dir / "schedule_plan.json").write_text(
++            json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++        )
++        if progress_script.is_file():
++            progress_reporter = subprocess.Popen([
++                sys.executable, str(progress_script), "--schedule-dir", str(run_dir),
++                "--output-dir", str(miniwam_root / "eval_results" / "robotwin" / "reports"),
++                "--scheduler-pid", str(os.getpid()), "--watch",
++            ])
++
+     slots: queue.Queue[str] = queue.Queue()
+     for gpu_id in gpu_slots(capacity):
+         slots.put(gpu_id)
+@@ -1069,7 +1151,18 @@ def run_schedule(
+     ]
+     if failed_jobs:
+         print(f"Failed jobs: {', '.join(failed_jobs)}", file=sys.stderr)
+-    return 1 if summary["jobs_failed"] or summary["jobs_finished"] < len(jobs) else 0
++    result_code = 1 if summary["jobs_failed"] or summary["jobs_finished"] < len(jobs) else 0
++    if progress_reporter is not None:
++        try:
++            reporter_code = progress_reporter.wait(timeout=30)
++        except subprocess.TimeoutExpired:
++            progress_reporter.terminate()
++            reporter_code = progress_reporter.wait(timeout=10)
++        if reporter_code:
++            print(f"[MiniWAM][ERROR] Live report sidecar failed with status {reporter_code}.",
++                  file=sys.stderr)
++            result_code = 1
++    return result_code
+ 
+ 
+ def main() -> int:
+@@ -1080,10 +1173,20 @@ def main() -> int:
+         jobs = expand_jobs(config, cli, remote_enabled)
+         capacity = parse_gpu_capacity(config, cli)
+         settings = scheduler_settings(cli, remote_enabled, remote_endpoints)
++        settings["miniwam"] = config.get("miniwam")
+         warnings = validate_jobs(jobs)
+         for warning in warnings:
+             print(f"[WARN] {warning}", file=sys.stderr)
+         if cli.dry_run:
++            if jobs[0].policy_name == "MiniWAM":
++                miniwam_root = Path(os.environ.get("MINIWAM_ROOT", ROBOTWIN_ROOT.parent)).resolve()
++                sys.path.insert(0, str(miniwam_root))
++                from scripts.eval.robotwin_protocol import resolve_protocol_config, validate_evaluation_jobs
++                try:
++                    protocol, _ = resolve_protocol_config(settings.get("miniwam"), miniwam_root)
++                    validate_evaluation_jobs(jobs, protocol, ROBOTWIN_ROOT)
++                except (ValueError, OSError) as exc:
++                    raise ConfigError(str(exc)) from exc
+             print_schedule(jobs, capacity, remote_endpoints)
+             return 0
+         return run_schedule(jobs, capacity, settings, config.get("_config_path"))
+diff --git a/scripts/eval_policy_xpolicylab.py b/scripts/eval_policy_xpolicylab.py
+index 745cc30..a8c4574 100644
+--- a/scripts/eval_policy_xpolicylab.py
++++ b/scripts/eval_policy_xpolicylab.py
+@@ -305,7 +305,10 @@ def main(usr_args: dict[str, Any]) -> None:
+     st_seed = 100000 * (1 + seed)
+     test_num = int(usr_args.get("test_num", 100))
+ 
+-    model_client = build_policy_client(usr_args)
++    from frozen_cases import FrozenCases
++    frozen = FrozenCases(args, usr_args, save_dir, instruction_type, test_num)
++    usr_args["_frozen_cases"] = frozen
++    model_client = None if frozen.capture or (frozen.replay and not frozen.count) else build_policy_client(usr_args)
+     try:
+         _, suc_num = eval_remote_policy(
+             task_name,
+@@ -321,6 +324,11 @@ def main(usr_args: dict[str, Any]) -> None:
+     finally:
+         close_policy_client(model_client)
+ 
++    if frozen.capture:
++        print("[FROZEN] capture complete; no policy episodes were evaluated", flush=True)
++        return
++    if frozen.replay:
++        suc_num = frozen.finish()
+     file_path = os.path.join(save_dir, "_result.txt")
+     with open(file_path, "w", encoding="utf-8") as file:
+         file.write(f"Timestamp: {current_time}\n\n")
+@@ -797,7 +805,13 @@ def eval_remote_policy(
+     args["eval_mode"] = True
+     consecutive_env_errors = 0
+ 
+-    while succ_seed < test_num:
++    frozen = usr_args.get("_frozen_cases")
++    target_count = frozen.count if frozen and frozen.enabled else test_num
++    while succ_seed < target_count:
++        if frozen and frozen.enabled:
++            now_seed = frozen.seed(succ_seed, now_seed)
++            if frozen.replay:
++                now_id = frozen.current["episode_index"]
+         render_freq = args["render_freq"]
+         args["render_freq"] = 0
+         episode_info = {"info": {}}
+@@ -808,12 +822,16 @@ def eval_remote_policy(
+                 episode_info = task_env.play_once()
+                 task_env.close_env()
+             except UnStableError:
++                if frozen and frozen.replay:
++                    raise
+                 safe_close_env(task_env)
+                 print(f"skip unstable seed={now_seed} (expert check)")
+                 now_seed += 1
+                 args["render_freq"] = render_freq
+                 continue
+             except Exception as e:
++                if frozen and frozen.replay:
++                    raise
+                 safe_close_env(task_env)
+                 now_seed += 1
+                 args["render_freq"] = render_freq
+@@ -821,6 +839,8 @@ def eval_remote_policy(
+                 continue
+ 
+         if expert_check and not (task_env.plan_success and task_env.check_success()):
++            if frozen and frozen.replay:
++                raise RuntimeError("Frozen seed no longer passes official expert filtering")
+             now_seed += 1
+             args["render_freq"] = render_freq
+             continue
+@@ -829,11 +849,15 @@ def eval_remote_policy(
+         try:
+             task_env.setup_demo(now_ep_num=now_id, seed=now_seed, is_test=True, **args)
+         except UnStableError:
++            if frozen and frozen.replay:
++                raise
+             safe_close_env(task_env)
+             print(f"skip unstable seed={now_seed} (eval setup)")
+             now_seed += 1
+             continue
+         except Exception as e:
++            if frozen and frozen.replay:
++                raise
+             safe_close_env(task_env)
+             print(f"skip seed={now_seed} setup error: {type(e).__name__}: {e}")
+             now_seed += 1
+@@ -841,7 +865,15 @@ def eval_remote_policy(
+ 
+         succ_seed += 1
+ 
+-        instruction = build_instruction(args, episode_info, instruction_type, test_num)
++        instruction = frozen.instruction() if frozen and frozen.replay else build_instruction(args, episode_info, instruction_type, test_num)
++        if frozen and frozen.enabled:
++            frozen.accepted(now_seed, succ_seed - 1, instruction, episode_info, task_env)
++            if frozen.capture:
++                task_env.close_env(clear_cache=True)
++                now_id += 1
++                now_seed += 1
++                print(f"[FROZEN] accepted {succ_seed}/{test_num}", flush=True)
++                continue
+         task_env.set_instruction(instruction=instruction)
+ 
+         if task_env.eval_video_path is not None:
+@@ -921,6 +953,8 @@ def eval_remote_policy(
+                 if succ:
+                     break
+         except Exception:
++            if frozen and frozen.replay:
++                raise
+             rollout_failed = True
+             print("\n\033[91mPolicy rollout error:\033[0m")
+             print(traceback.format_exc())
+@@ -955,6 +989,8 @@ def eval_remote_policy(
+         else:
+             print("\033[91mFail!\033[0m")
+ 
++        if frozen and frozen.replay:
++            frozen.result(succ)
+         now_id += 1
+         task_env.close_env(clear_cache=((succ_seed + 1) % clear_cache_freq == 0))
+ 
+@@ -1434,3 +1470,5 @@ if __name__ == "__main__":
+         main_batch(parsed_args)
+     else:
+         main(parsed_args)
++
++# PRISM_FROZEN_CASES_V3

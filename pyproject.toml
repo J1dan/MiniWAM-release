@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miniwam"
+version = "0.1.0"
+authors = [{name = "Jie Chen"}, {name = "Ruofei Bai"}, {name = "Yuxin Cai"}, {name = "Yifeng Zhang"}, {name = "Chengyang He"}, {name = "Jun Li"}, {name = "Wei-Yun Yau"}, {name = "Guillaume Sartoretti"}]
+description = "Compact world-action models with predictive representations"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+license = "MIT AND Apache-2.0"
+license-files = ["LICENSE", "LICENSES/*", "THIRD_PARTY_NOTICES.md"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "numpy==1.26.4",
+    "einops==0.4.1",
+    "transformers==4.57.6",
+    "tokenizers==0.22.1",
+    "huggingface-hub==0.36.2",
+    "safetensors==0.8.0",
+    "sentencepiece==0.1.99",
+    "protobuf==4.25.3",
+    "PyYAML==6.0.3",
+    "pillow==12.2.0",
+    "tqdm==4.68.2",
+    "regex==2026.5.9",
+]
+
+[project.optional-dependencies]
+data = ["av==17.1.0", "h5py==3.16.0", "pandas==2.3.3", "pyarrow==24.0.0"]
+logging = ["wandb==0.27.2"]
+robotwin-client = ["pydantic==2.13.4", "msgpack==1.1.1", "msgpack-numpy==0.4.8", "websockets==15.0.1", "opencv-python==4.6.0.66", "transforms3d==0.4.2", "rich==15.0.0"]
+libero = [
+    "bddl==1.0.1", "cloudpickle==2.1.0", "easydict==1.9", "egl-probe==1.0.2",
+    "future==0.18.2", "glfw==2.10.0", "gym==0.25.2", "mujoco==3.3.2",
+    "PyOpenGL==3.1.10", "robomimic==0.2.0", "robosuite==1.4.0",
+    "opencv-python==4.6.0.66", "imageio==2.37.3", "h5py==3.16.0",
+]
+libero-plus = ["Wand==0.6.13", "scikit-image==0.24.0", "usd-core==25.5.1"]
+dev = ["pytest==9.0.3"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["miniwam*", "deploy*", "scripts*"]
+exclude = ["tests*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["datasets", "outputs", "pretrained"]
+markers = ["robotwin_install: requires the pinned, patched RoboTwin checkout"]

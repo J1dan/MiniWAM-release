@@ -1,0 +1,12 @@
+# Table 4 bottleneck 2x2, D=64: pool the PRISM grid to 2x2 spatial locations
+# (the temporal size is unchanged). Apply the same overlay to both stages.
+model:
+  latent_encoder:
+    latent_dim: 64
+    bottleneck:
+      type: adaptive_avg_pool3d
+      target_grid: [null, 2, 2]
+
+stage2:
+  checkpoint:
+    policy_init: fresh

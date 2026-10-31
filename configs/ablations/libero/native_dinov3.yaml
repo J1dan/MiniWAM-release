@@ -1,0 +1,58 @@
+# Table 1, DINOv3 "w/ Native Co-Train": jointly denoise all 16 native future
+# DINOv3 patch grids per camera and the actions. There is no PRISM encoder and
+# no Stage 1.
+stage: 2
+
+data:
+  features_root: "datasets/dino_features_libero_aggregate_minmax/libero_10_no_noops_lerobot,datasets/dino_features_libero_aggregate_minmax/libero_spatial_no_noops_lerobot,datasets/dino_features_libero_aggregate_minmax/libero_object_no_noops_lerobot,datasets/dino_features_libero_aggregate_minmax/libero_goal_no_noops_lerobot"
+  action_horizon: 16
+  future_rgb_horizon: 16
+
+model:
+  architecture: native    # native-feature model on DINOv3 features
+  visual_encoder:
+    type: dinov3
+    compute_dtype: float32
+    architecture: vitb16
+    pretraining: lvd1689m
+    model_id: facebook/dinov3-vitb16-pretrain-lvd1689m
+    revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    resolved_revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    frozen: true
+    input_size: 224
+    patch_size: 16
+    feature:
+      type: patch_tokens
+      normalization: final_layernorm
+      l2_normalize: false
+      include_cls: false
+      include_registers: false
+      output_dtype: bfloat16
+      layers: {mode: final}
+    future: {encode_all_frames: true, temporal_downsample_factor: 4}
+    cache: {per_frame: true, storage_dtype: bfloat16}
+  context_encoder:
+    proprio_dim: 8
+  video_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    in_channels: 768
+    out_channels: 768
+    patch_size: [1, 2, 2]
+    frame0_patch_size: [1, 1]     # current frame: one token per DINOv3 patch
+    video_attention_mask_mode: first_frame_causal
+    use_gradient_checkpointing: true
+
+loss:
+  lambda_action: 1.0
+  lambda_video: 1.0
+
+training:
+  per_device_batch_size: 32
+  gradient_accumulation_steps: 8
+  max_steps: 54200
+  save_interval: 5420
+  output_dir: outputs/libero_native_dinov3
+
+logging:
+  wandb_run_name: libero-native-dinov3

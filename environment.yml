@@ -1,0 +1,59 @@
+# MiniWAM policy, extraction, and LIBERO runtime.
+# RoboTwin simulation is installed separately. WandB is opt-in: pip install -e ".[logging]"
+name: miniwam
+channels:
+- defaults
+dependencies:
+- python=3.10
+- pip
+- setuptools
+- wheel
+- packaging
+- ninja
+- pip:
+  - --extra-index-url https://download.pytorch.org/whl/cu128
+  - torch==2.11.0+cu128
+  - torchvision==0.26.0+cu128
+  - einops==0.4.1
+  - huggingface-hub==0.36.2
+  - matplotlib==3.5.3
+  - pydantic==2.13.4
+  - rich==15.0.0
+  - msgpack==1.1.1
+  - msgpack-numpy==0.4.8
+  - numpy==1.26.4
+  - protobuf==4.25.3
+  - safetensors==0.8.0
+  - sentencepiece==0.1.99
+  - tokenizers==0.22.1
+  - tqdm==4.68.2
+  - transformers==4.57.6
+  - websockets==15.0.1
+  - av==17.1.0
+  - h5py==3.16.0
+  - imageio==2.37.3
+  - opencv-python==4.6.0.66
+  - pandas==2.3.3
+  - pillow==12.2.0
+  - pyarrow==24.0.0
+  - scipy==1.13.1
+  - bddl==1.0.1
+  - cloudpickle==2.1.0
+  - easydict==1.9
+  - egl-probe==1.0.2
+  - future==0.18.2
+  - glfw==2.10.0
+  - gym==0.25.2
+  - hydra-core==1.2.0
+  - mujoco==3.3.2
+  - omegaconf==2.3.1
+  - PyOpenGL==3.1.10
+  - robomimic==0.2.0
+  - robosuite==1.4.0
+  - Wand==0.6.13
+  - scikit-image==0.24.0
+  - usd-core==25.5.1
+  - pytest==9.0.3
+  - PyYAML==6.0.3
+  - regex==2026.5.9
+  - transforms3d==0.4.2

@@ -1,0 +1,70 @@
+# RoboTwin 2.0 native-feature co-training on Wan2.1-VAE features (horizon 16):
+# no PRISM encoder and no Stage 1.
+stage: 2
+
+data:
+  dataset_name: robotwin2_demo_clean_50x50
+  features_root: datasets/vae_features_robotwin2_demo_clean_50x50
+  vae_path: pretrained/vision/Wan2.1_VAE.pth
+  action_dim: 14
+  proprio_dim: 14
+  action_horizon: 16
+  future_rgb_horizon: 16
+  action_type: joint
+  action_representation: absolute_qpos
+  action_transform: null
+  delta_action_mask: null
+  normalization:
+    action: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-8}
+    proprio: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-8}
+  split: {tasks: 50, episodes_per_task: 50, episode_ids: "0000000-0000049", source: demo_clean}
+
+model:
+  architecture: native
+  visual_encoder:
+    type: wan_vae
+    vae_path: pretrained/vision/Wan2.1_VAE.pth
+    feature_grid: [28, 28]
+    future: {temporal_downsample_factor: 4}
+  multi_view_latent_encoder:
+    max_main_slots: 1
+    max_wrist_slots: 2
+    camera_rope_slot_stride: 32
+  context_encoder: {hidden_dim: 768, proprio_dim: 14}
+  mot: {num_heads: 12, attn_head_dim: 64, num_layers: 12}
+  video_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    in_channels: 16
+    out_channels: 16
+    patch_size: [1, 2, 2]
+    video_attention_mask_mode: first_frame_causal
+    use_gradient_checkpointing: true
+  action_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    action_dim: 14
+    use_gradient_checkpointing: true
+
+loss:
+  lambda_action: 1.0
+  lambda_video: 1.0
+
+training:
+  global_batch_size: 256
+  # Native three-view VAE prediction is memory-heavy. Distributed launchers
+  # should preserve world_size * microbatch * accumulation = 256.
+  per_device_batch_size: 32
+  gradient_accumulation_steps: 8
+  max_steps: "20epoch"
+  save_interval: "4epoch"
+  output_dir: outputs/robotwin_native_wan_vae
+
+inference:
+  num_inference_steps: 20
+  seed: 42
+  replan_steps: action_horizon
+  return_video: false
+
+logging:
+  wandb_run_name: robotwin-native-wan-vae

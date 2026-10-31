@@ -1,0 +1,123 @@
+# Shared defaults for every MiniWAM training run. Stage configs (configs/libero,
+# configs/robotwin, configs/ablations) are merged over this file. The visual
+# settings below describe Wan2.1-VAE features; DINOv3 configs replace them.
+
+# Frozen encoders used for feature extraction and evaluation.
+pretrained:
+  vae_path: pretrained/vision/Wan2.1_VAE.pth
+  text_encoder_path: pretrained/language/models_t5_umt5-xxl-enc-bf16.pth
+  tokenizer_id: google/umt5-xxl
+  context_len: 128
+
+model:
+  visual_encoder:
+    type: wan_vae
+    feature_grid: [28, 28]
+    future:
+      temporal_downsample_factor: 4  # RGB future frames per future feature step
+
+  # PRISM encoder E_phi: compresses current + future features into world tokens.
+  latent_encoder:
+    in_channels: 16              # Wan-VAE feature channels
+    latent_dim: 64               # D_L, channels per world token
+    compression_stages:          # [out_channels, kernel, stride, padding]
+      - [32,  [1,3,3], [1,2,2], [0,1,1]]
+      - [64,  [1,3,3], [1,2,2], [0,1,1]]
+      - [128, [3,3,3], [2,2,2], [1,1,1]]
+    use_kl: true
+    bottleneck:
+      type: none                 # adaptive_avg_pool3d for the capacity ablation
+      target_grid: null          # e.g. [null, 2, 2]; the temporal size is derived
+
+  # Feature decoder used by the Stage-1 reconstruction loss.
+  reconstruction:
+    decoder_enabled: false
+    lambda_rec: 0.0
+    hidden_dim: 64
+
+  # Camera slots: main cameras share one encoder, wrist cameras share another;
+  # each slot gets its own RoPE coordinate band, slot_stride wide.
+  multi_view_latent_encoder:
+    max_main_slots: 2
+    max_wrist_slots: 1
+    camera_rope_slot_stride: 32
+
+  # Mixture-of-Transformers shared by the world and action experts (0.25B).
+  mot:
+    num_heads: 12
+    attn_head_dim: 64
+    num_layers: 12
+    checkpoint_mixed_attn: true
+
+  world_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    text_dim: 4096
+    freq_dim: 256
+    eps: 1.0e-6
+    use_3d_rope: true
+    use_gradient_checkpointing: true
+
+  action_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    text_dim: 4096
+    freq_dim: 256
+    eps: 1.0e-6
+    action_dim: 7
+    use_gradient_checkpointing: true
+
+  # Language (and, in Stage 2, proprioception) conditioning via cross-attention.
+  context_encoder:
+    text_dim: 4096
+    hidden_dim: 768
+
+  world_scheduler:
+    train_shift: 5.0
+    num_train_timesteps: 1000
+  action_scheduler:
+    train_shift: 5.0
+    num_train_timesteps: 1000
+
+  independent_timesteps: true    # world and action noise levels sampled independently
+
+data:
+  # Comma-separated roots of pre-extracted features.
+  features_root: "datasets/vae_features_libero_aggregate_minmax/libero_10_no_noops_lerobot,datasets/vae_features_libero_aggregate_minmax/libero_spatial_no_noops_lerobot,datasets/vae_features_libero_aggregate_minmax/libero_object_no_noops_lerobot,datasets/vae_features_libero_aggregate_minmax/libero_goal_no_noops_lerobot"
+
+  vae_path: pretrained/vision/Wan2.1_VAE.pth
+  text_encoder_path: pretrained/language/models_t5_umt5-xxl-enc-bf16.pth
+  tokenizer_id: google/umt5-xxl
+  context_len: 128
+
+  action_dim: 7
+  action_horizon: 16
+  future_rgb_horizon: 16         # a positive multiple of 4
+  num_workers: 4
+
+training:
+  seed: 42
+  # Global batch = GPUs x per_device_batch_size x gradient_accumulation_steps = 256.
+  global_batch_size: 256
+  per_device_batch_size: 256
+  learning_rate: 5.0e-4
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.05
+  mixed_precision: bf16
+  gradient_accumulation_steps: 1
+  max_steps: "20epoch"           # an integer step count or "<N>epoch"
+  save_interval: "5epoch"
+  log_interval: 10
+
+inference:
+  num_inference_steps: 20
+  seed: 42
+  replan_steps: 10
+
+logging:
+  use_wandb: false               # or pass --wandb; authenticate with `wandb login`
+  wandb_project: miniwam
+  wandb_entity: null
+  wandb_run_name: "miniwam"

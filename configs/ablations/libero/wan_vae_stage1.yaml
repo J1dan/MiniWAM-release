@@ -1,0 +1,25 @@
+# Table 1, WAN2.1-VAE "w/ PRISM", Stage 1: the LIBERO recipe on frozen Wan-VAE
+# features (inverse dynamics plus feature reconstruction, 16,260 updates).
+stage: 1
+
+model:
+  stage1_objective: inverse_dynamics
+  reconstruction:
+    decoder_enabled: true
+    lambda_rec: 1.0
+  context_encoder:
+    proprio_dim: null
+
+loss:
+  lambda_action: 1.0
+  lambda_latent: 0.0
+  kl_beta: 1.0e-06
+  kl_warmup_steps: 1000
+
+training:
+  max_steps: 16260
+  save_interval: 16260
+  output_dir: outputs/libero_wan_vae_stage1
+
+logging:
+  wandb_run_name: libero-wan-vae-stage1

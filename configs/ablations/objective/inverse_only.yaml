@@ -1,0 +1,10 @@
+# Table 4 "Inv. dyn.": Stage-1 objective without feature reconstruction (no
+# decoder). Apply the same overlay to both stages.
+model:
+  reconstruction:
+    decoder_enabled: false
+    lambda_rec: 0.0
+
+stage2:
+  checkpoint:
+    policy_init: fresh

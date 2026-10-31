@@ -1,0 +1,8 @@
+# Reference arm of the ablations (Table 1 DINOv3 "w/ PRISM", Table 4 4x4 Both):
+# the default LIBERO recipe with Stage 2 starting from a seeded policy, like
+# every other ablation arm. Stage-2 only; Stage 1 is the default
+# configs/libero/stage1.yaml run, e.g.
+#   --config configs/libero/stage2.yaml configs/ablations/fresh_policy.yaml
+stage2:
+  checkpoint:
+    policy_init: fresh

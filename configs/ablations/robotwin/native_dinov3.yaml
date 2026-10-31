@@ -1,0 +1,92 @@
+# RoboTwin 2.0 native-feature co-training on DINOv3 features (horizon 16): no
+# PRISM encoder and no Stage 1.
+stage: 2
+
+data:
+  dataset_name: robotwin2_demo_clean_50x50
+  features_root: datasets/dino_features_robotwin2_demo_clean_50x50
+  action_dim: 14
+  proprio_dim: 14
+  action_horizon: 16
+  future_rgb_horizon: 16
+  action_type: joint
+  action_representation: absolute_qpos
+  action_transform: null
+  delta_action_mask: null
+  normalization:
+    action: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-8}
+    proprio: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-8}
+  split:
+    tasks: 50
+    episodes_per_task: 50
+    episode_ids: "0000000-0000049"
+    source: demo_clean
+
+model:
+  architecture: native
+  visual_encoder:
+    type: dinov3
+    compute_dtype: float32
+    architecture: vitb16
+    pretraining: lvd1689m
+    model_id: facebook/dinov3-vitb16-pretrain-lvd1689m
+    revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    resolved_revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    frozen: true
+    input_size: 224
+    patch_size: 16
+    feature:
+      type: patch_tokens
+      normalization: final_layernorm
+      l2_normalize: false
+      include_cls: false
+      include_registers: false
+      output_dtype: bfloat16
+      layers: {mode: final}
+    future:
+      encode_all_frames: true
+      temporal_downsample_factor: 4
+    cache: {per_frame: true, storage_dtype: bfloat16}
+  multi_view_latent_encoder:
+    max_main_slots: 1
+    max_wrist_slots: 2
+    camera_rope_slot_stride: 32
+  context_encoder:
+    hidden_dim: 768
+    proprio_dim: 14
+  mot: {num_heads: 12, attn_head_dim: 64, num_layers: 12}
+  video_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    in_channels: 768
+    out_channels: 768
+    patch_size: [1, 2, 2]
+    frame0_patch_size: [1, 1]     # current frame: one token per DINOv3 patch
+    video_attention_mask_mode: first_frame_causal
+    use_gradient_checkpointing: true
+  action_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    action_dim: 14
+
+loss:
+  lambda_action: 1.0
+  lambda_video: 1.0
+
+training:
+  global_batch_size: 256
+  # Native three-view feature prediction is memory-heavy. Distributed launchers
+  # should preserve world_size * microbatch * accumulation = 256.
+  per_device_batch_size: 32
+  gradient_accumulation_steps: 8
+  max_steps: "20epoch"
+  save_interval: "4epoch"
+  output_dir: outputs/robotwin_native_dinov3
+
+inference:
+  num_inference_steps: 20
+  seed: 42
+  replan_steps: action_horizon
+
+logging:
+  wandb_run_name: robotwin-native-dinov3

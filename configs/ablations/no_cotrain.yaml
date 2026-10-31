@@ -1,0 +1,9 @@
+# Table 1 "w/o Co-Train": Stage-2 overlay that sets the world-flow loss weight to
+# zero; world tokens and joint attention are kept. Stack it on any Stage-2
+# config, e.g.
+#   --config configs/libero/stage2.yaml configs/ablations/no_cotrain.yaml
+stage2:
+  checkpoint:
+    policy_init: fresh
+  loss:
+    lambda_latent: 0.0

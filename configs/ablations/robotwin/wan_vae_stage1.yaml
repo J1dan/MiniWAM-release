@@ -1,0 +1,57 @@
+# RoboTwin 2.0 PRISM Stage 1 on Wan2.1-VAE features (horizon 16).
+stage: 1
+
+data:
+  dataset_name: robotwin2_demo_clean_50x50
+  features_root: datasets/vae_features_robotwin2_demo_clean_50x50
+  vae_path: pretrained/vision/Wan2.1_VAE.pth
+  action_dim: 14
+  proprio_dim: 14
+  action_horizon: 16
+  future_rgb_horizon: 16
+  action_type: joint
+  action_representation: absolute_qpos
+  action_transform: null
+  delta_action_mask: null
+  normalization:
+    action: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-8}
+    proprio: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-8}
+  split: {tasks: 50, episodes_per_task: 50, episode_ids: "0000000-0000049", source: demo_clean}
+
+model:
+  stage1_objective: inverse_dynamics
+  visual_encoder:
+    type: wan_vae
+    vae_path: pretrained/vision/Wan2.1_VAE.pth
+    feature_grid: [28, 28]
+    future: {temporal_downsample_factor: 4}
+  multi_view_latent_encoder:
+    max_main_slots: 1
+    max_wrist_slots: 2
+    camera_rope_slot_stride: 32
+  latent_encoder:
+    in_channels: 16
+    latent_dim: 64
+    compression_stages:
+      - [32,  [1,3,3], [1,2,2], [0,1,1]]
+      - [64,  [1,3,3], [1,2,2], [0,1,1]]
+      - [128, [3,3,3], [2,2,2], [1,1,1]]
+    bottleneck: {type: none, target_grid: null}
+  reconstruction: {decoder_enabled: true, lambda_rec: 1.0, hidden_dim: 64}
+  context_encoder: {hidden_dim: 768, proprio_dim: null}
+  mot: {num_heads: 12, attn_head_dim: 64, num_layers: 12}
+  world_dit: {hidden_dim: 768, ffn_dim: 3072}
+  action_dit: {hidden_dim: 768, ffn_dim: 3072, action_dim: 14}
+
+loss: {lambda_action: 1.0, lambda_latent: 0.0, kl_beta: 1.0e-6, kl_warmup_steps: 1000}
+
+training:
+  global_batch_size: 256
+  per_device_batch_size: 256
+  gradient_accumulation_steps: 1
+  max_steps: "6epoch"
+  save_interval: "6epoch"
+  output_dir: outputs/robotwin_wan_vae_stage1
+
+logging:
+  wandb_run_name: robotwin-wan-vae-stage1

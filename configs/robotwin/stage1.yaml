@@ -1,0 +1,73 @@
+# MiniWAM on RoboTwin 2.0, Stage 1: learn the PRISM encoder from frozen DINOv3
+# features of the head and both wrist cameras (horizon 24, 6 epochs).
+stage: 1
+
+data:
+  dataset_name: robotwin2_demo_clean_50x50
+  features_root: datasets/dino_features_robotwin2_demo_clean_50x50
+  action_dim: 14
+  proprio_dim: 14
+  action_horizon: 24
+  future_rgb_horizon: 24
+  action_type: joint
+  action_representation: absolute_qpos
+  action_transform: null
+  delta_action_mask: null
+  normalization:
+    action: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-08}
+    proprio: {type: zscore_clip, scope: global_exact_training_split, clip: 5.0, epsilon: 1.0e-08}
+  split: {tasks: 50, episodes_per_task: 50, episode_ids: "0000000-0000049", source: demo_clean}
+
+model:
+  stage1_objective: inverse_dynamics
+  visual_encoder:
+    type: dinov3
+    compute_dtype: float32
+    architecture: vitb16
+    pretraining: lvd1689m
+    model_id: facebook/dinov3-vitb16-pretrain-lvd1689m
+    revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    resolved_revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    frozen: true
+    input_size: 224
+    patch_size: 16
+    feature:
+      type: patch_tokens
+      normalization: final_layernorm
+      l2_normalize: false
+      include_cls: false
+      include_registers: false
+      output_dtype: bfloat16
+      layers: {mode: final}
+    adapter: {input_dim: 768, hidden_dim: 64}
+    future: {encode_all_frames: true, temporal_downsample_factor: 4}
+    cache: {per_frame: true, storage_dtype: bfloat16}
+  multi_view_latent_encoder:
+    max_main_slots: 1            # head camera
+    max_wrist_slots: 2           # left and right wrist cameras share an encoder
+  latent_encoder:
+    compression_stages:          # [out_channels, kernel, stride, padding]
+      - [64,  [1,3,3], [1,2,2], [0,1,1]]
+      - [128, [1,3,3], [1,2,2], [0,1,1]]
+      - [128, [3,3,3], [2,1,1], [1,1,1]]
+  reconstruction:
+    decoder_enabled: true
+    lambda_rec: 1.0
+  context_encoder:
+    proprio_dim: null
+  action_dit:
+    action_dim: 14
+
+loss:
+  lambda_action: 1.0
+  lambda_latent: 0.0
+  kl_beta: 1.0e-06
+  kl_warmup_steps: 1000
+
+training:
+  max_steps: 6epoch
+  save_interval: 6epoch
+  output_dir: outputs/robotwin_stage1
+
+logging:
+  wandb_run_name: robotwin-stage1

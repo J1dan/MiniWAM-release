@@ -1,0 +1,57 @@
+# MiniWAM on LIBERO, Stage 2: freeze the PRISM encoder and jointly denoise
+# world tokens and actions (54,200 updates). The benchmark model starts from
+# the Stage-1 checkpoint: its policy and encoder weights are transferred.
+stage: 2
+
+checkpoint:
+  stage1_path: outputs/libero_stage1/latest    # Stage-1 checkpoint folder
+  policy_init: stage1
+
+data:
+  features_root: datasets/dino_features_libero_aggregate_minmax/libero_10_no_noops_lerobot,datasets/dino_features_libero_aggregate_minmax/libero_spatial_no_noops_lerobot,datasets/dino_features_libero_aggregate_minmax/libero_object_no_noops_lerobot,datasets/dino_features_libero_aggregate_minmax/libero_goal_no_noops_lerobot
+
+model:
+  stage1_objective: inverse_dynamics
+  visual_encoder:
+    type: dinov3
+    compute_dtype: float32
+    architecture: vitb16
+    pretraining: lvd1689m
+    model_id: facebook/dinov3-vitb16-pretrain-lvd1689m
+    revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    resolved_revision: 5931719e67bbdb9737e363e781fb0c67687896bc
+    frozen: true
+    input_size: 224
+    patch_size: 16
+    feature:
+      type: patch_tokens
+      normalization: final_layernorm
+      l2_normalize: false
+      include_cls: false
+      include_registers: false
+      output_dtype: bfloat16
+      layers: {mode: final}
+    adapter: {input_dim: 768, hidden_dim: 64}
+    future: {encode_all_frames: true, temporal_downsample_factor: 4}
+    cache: {per_frame: true, storage_dtype: bfloat16}
+  latent_encoder:
+    compression_stages:          # [out_channels, kernel, stride, padding]
+      - [64,  [1,3,3], [1,2,2], [0,1,1]]
+      - [128, [1,3,3], [1,2,2], [0,1,1]]
+      - [128, [3,3,3], [2,1,1], [1,1,1]]
+  context_encoder:
+    proprio_dim: 8
+
+loss:
+  lambda_action: 1.0
+  lambda_latent: 1.0
+  kl_beta: 0.0
+  kl_warmup_steps: 0
+
+training:
+  max_steps: 54200
+  save_interval: 5420
+  output_dir: outputs/libero_stage2
+
+logging:
+  wandb_run_name: libero-stage2

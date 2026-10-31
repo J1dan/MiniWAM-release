@@ -1,0 +1,35 @@
+# Table 1, WAN2.1-VAE "w/ Native Co-Train": jointly denoise the four native
+# future VAE latent blocks per camera and the actions. There is no PRISM encoder
+# and no Stage 1.
+stage: 2
+
+data:
+  action_horizon: 16
+  future_rgb_horizon: 16
+
+model:
+  architecture: native     # native-feature model on Wan-VAE features
+  context_encoder:
+    proprio_dim: 8
+  video_dit:
+    hidden_dim: 768
+    ffn_dim: 3072
+    in_channels: 16
+    out_channels: 16
+    patch_size: [1, 2, 2]
+    video_attention_mask_mode: first_frame_causal
+    use_gradient_checkpointing: true
+
+loss:
+  lambda_action: 1.0
+  lambda_video: 1.0
+
+training:
+  per_device_batch_size: 32
+  gradient_accumulation_steps: 8
+  max_steps: 54200
+  save_interval: 5420
+  output_dir: outputs/libero_native_wan_vae
+
+logging:
+  wandb_run_name: libero-native-wan-vae

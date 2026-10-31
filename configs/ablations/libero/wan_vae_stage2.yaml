@@ -1,0 +1,25 @@
+# Table 1, WAN2.1-VAE "w/ PRISM", Stage 2 (54,200 updates).
+stage: 2
+
+checkpoint:
+  stage1_path: outputs/libero_wan_vae_stage1/latest    # Stage-1 checkpoint folder
+  policy_init: fresh
+
+model:
+  stage1_objective: inverse_dynamics
+  context_encoder:
+    proprio_dim: 8
+
+loss:
+  lambda_action: 1.0
+  lambda_latent: 1.0
+  kl_beta: 0.0
+  kl_warmup_steps: 0
+
+training:
+  max_steps: 54200
+  save_interval: 5420
+  output_dir: outputs/libero_wan_vae_stage2
+
+logging:
+  wandb_run_name: libero-wan-vae-stage2

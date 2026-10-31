@@ -1,0 +1,23 @@
+policy_name: MiniWAM
+protocol: ws
+eval_batch: false
+
+port: null
+host: localhost
+bench_name: null
+task_name: null
+ckpt_name: null
+env_cfg_type: null
+action_type: joint
+action_dim: 14
+seed: 0
+
+project_root: null
+checkpoint_path: null    # checkpoint folder
+device: cuda
+mixed_precision: bf16
+# Resolve both from the checkpoint. The sentinel executes its full
+# action chunk and automatically follows 16/24/32-horizon checkpoints.
+action_horizon: null
+replan_steps: action_horizon
+num_inference_steps: 20

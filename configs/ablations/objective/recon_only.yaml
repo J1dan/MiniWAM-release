@@ -1,0 +1,12 @@
+# Table 4 "Recon.": Stage 1 trains only the encoder and feature decoder (feature
+# MSE and KL, no inverse-dynamics loss). Apply the same overlay to both stages.
+model:
+  stage1_objective: reconstruction_only
+
+stage1:
+  loss:
+    lambda_action: 0.0
+
+stage2:
+  checkpoint:
+    policy_init: fresh

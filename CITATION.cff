@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: "If you use MiniWAM, please cite the paper below."
+title: "MiniWAM: Learning Compact Future Targets for Efficient World-Action Modeling"
+type: software
+version: 0.1.0
+authors:
+  - family-names: Chen
+    given-names: Jie
+    affiliation: "National University of Singapore; IAIC, A*STAR"
+  - family-names: Bai
+    given-names: Ruofei
+    affiliation: "Nanyang Technological University; IAIC, A*STAR"
+  - family-names: Cai
+    given-names: Yuxin
+    affiliation: "Nanyang Technological University; IAIC, A*STAR"
+  - family-names: Zhang
+    given-names: Yifeng
+    affiliation: "National University of Singapore"
+  - family-names: He
+    given-names: Chengyang
+    affiliation: "National University of Singapore"
+  - family-names: Li
+    given-names: Jun
+    affiliation: "IAIC, A*STAR"
+  - family-names: Yau
+    given-names: Wei-Yun
+    affiliation: "IAIC, A*STAR"
+  - family-names: Sartoretti
+    given-names: Guillaume
+    affiliation: "National University of Singapore"
+license: MIT
+url: "https://arxiv.org/abs/2610.12194"
+repository-code: "https://github.com/J1dan/MiniWAM-release"
+preferred-citation:
+  type: article
+  title: "MiniWAM: Learning Compact Future Targets for Efficient World-Action Modeling"
+  authors:
+    - family-names: Chen
+      given-names: Jie
+    - family-names: Bai
+      given-names: Ruofei
+    - family-names: Cai
+      given-names: Yuxin
+    - family-names: Zhang
+      given-names: Yifeng
+    - family-names: He
+      given-names: Chengyang
+    - family-names: Li
+      given-names: Jun
+    - family-names: Yau
+      given-names: Wei-Yun
+    - family-names: Sartoretti
+      given-names: Guillaume
+  journal: "arXiv preprint arXiv:2610.12194"
+  year: 2026
+  url: "https://arxiv.org/abs/2610.12194"

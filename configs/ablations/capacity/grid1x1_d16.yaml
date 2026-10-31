@@ -1,0 +1,13 @@
+# Table 4 bottleneck 1x1, D=16: pool the PRISM grid to a single spatial location
+# with 16 channels (the temporal size is unchanged). Apply the same overlay to
+# both stages.
+model:
+  latent_encoder:
+    latent_dim: 16
+    bottleneck:
+      type: adaptive_avg_pool3d
+      target_grid: [null, 1, 1]
+
+stage2:
+  checkpoint:
+    policy_init: fresh

@@ -1,0 +1,38 @@
+# Python and packaging
+__pycache__/
+*.py[cod]
+*.egg-info/
+/build/
+/dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+.env
+.env.*
+# Local credentials, editor state, and caches
+.hf_token
+.wandb_api_key
+.hf-cache/
+.idea/
+.vscode/
+.DS_Store
+# Downloaded data, models, simulators, and generated results
+/datasets/
+/pretrained/
+/outputs/
+/checkpoints/
+/.cache/
+/data/
+/cache/
+/logs/
+/wandb/
+/eval_results/
+/LIBERO/
+/LIBERO-plus/
+/RoboTwin/
+.libero/
+.libero_plus*/
+.robotwin-env
+.robotwin-compat
+*.log
